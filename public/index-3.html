@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-time Chat</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f0f2f5; }
+    #header { background: #1877f2; color: white; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; }
+    .room-list { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+    .room-btn {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 20px;
+      background: #ddd;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .room-btn.active { background: #1877f2; color: white; }
+    #messages { 
+      height: 60vh; overflow-y: scroll; background: white; 
+      border-radius: 8px; padding: 15px; border: 1px solid #ddd;
+    }
+    .message { 
+      margin: 12px 0; padding: 10px 14px; border-radius: 18px; 
+      max-width: 80%; background: #f1f1f1; display: flex; gap: 10px;
+    }
+    .own { background: #dcf8c6; margin-left: auto; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; }
+    .img-preview { max-width: 280px; border-radius: 12px; margin-top: 6px; }
+    .badge { background: #ff3b30; color: white; font-size: 12px; padding: 2px 7px; border-radius: 50%; margin-left: 6px; }
+    #typing { font-style: italic; color: #555; padding: 5px 10px; }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h2>Real-time Chat</h2>
+    <div>
+      <span id="unread-badge" class="badge" style="display:none; cursor:pointer;">0</span>
+    </div>
+  </div>
+
+  <input id="username" placeholder="Your Name" value="Zahid">
+  <button onclick="createAndJoinRoom()">Create / Join Room</button>
+
+  <div class="room-list" id="room-list"></div>
+
+  <div id="messages"></div>
+  <div id="typing"></div>
+
+  <input id="input" placeholder="Type message..." onkeypress="if(event.key==='Enter') sendMessage()">
+  <button onclick="sendMessage()">Send</button>
+  <input type="file" id="fileInput" style="display:none" onchange="uploadFile()">
+  <button onclick="document.getElementById('fileInput').click()">📎</button>
+
+  <script>
+    const socket = io();
+    let username = '', currentRoom = 'general';
+    let unread = {};           // { roomName: count }
+    let activeRooms = new Set(['general']);   // Track all rooms
+    let isTabActive = true;
+
+    const notificationSound = new Audio('https://freesound.org/data/previews/276/276952_5123853-lq.mp3');
+
+    document.addEventListener('visibilitychange', () => {
+      isTabActive = !document.hidden;
+      if (isTabActive) markAllAsRead();
+    });
+
+    function createAndJoinRoom() {
+      username = document.getElementById('username').value.trim() || 'User';
+      const newRoom = prompt("Enter Room Name:", "general") || "general";
+
+      currentRoom = newRoom;
+      socket.emit('join', { username, room: currentRoom });
+    }
+
+    function switchRoom(room) {
+      if (currentRoom === room) return;
+      currentRoom = room;
+      socket.emit('join', { username, room });
+    }
+
+    // Render Room List
+    function renderRoomList() {
+      const container = document.getElementById('room-list');
+      container.innerHTML = '';
+
+      activeRooms.forEach(room => {
+        const btn = document.createElement('button');
+        btn.className = `room-btn ${room === currentRoom ? 'active' : ''}`;
+        btn.textContent = room;
+
+        if (unread[room] > 0) {
+          const badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.textContent = unread[room] > 99 ? '99+' : unread[room];
+          btn.appendChild(badge);
+        }
+
+        btn.onclick = () => switchRoom(room);
+        container.appendChild(btn);
+      });
+    }
+
+    function sendMessage() {
+      const msg = document.getElementById('input').value.trim();
+      if (msg) {
+        socket.emit('message', { message: msg });
+        document.getElementById('input').value = '';
+      }
+    }
+
+    function uploadFile() {
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      fetch('/upload', { method: 'POST', body: formData })
+      .then(res => res.json())
+      .then(data => {
+        socket.emit('message', {
+          message: data.isImage ? '' : `Shared: ${data.fileName}`,
+          fileUrl: data.fileUrl,
+          fileName: data.fileName,
+          isImage: data.isImage
+        });
+      });
+    }
+
+    function playNotification() {
+      notificationSound.currentTime = 0;
+      notificationSound.play().catch(() => {});
+    }
+
+    function markAllAsRead() {
+      if (unread[currentRoom]) unread[currentRoom] = 0;
+      renderRoomList();
+    }
+
+    document.getElementById('unread-badge').addEventListener('click', markAllAsRead);
+
+    function renderMessage(data) {
+      const div = document.createElement('div');
+      div.className = `message ${data.username === username ? 'own' : ''}`;
+
+      const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(data.username)}`;
+
+      let html = `
+        <img src="${avatarUrl}" class="avatar">
+        <div>
+          <strong>${data.username}</strong><br>
+      `;
+
+      if (data.isImage && data.fileUrl) {
+        html += `<img src="${data.fileUrl}" class="img-preview" onclick="window.open('${data.fileUrl}', '_blank')">`;
+      } else if (data.fileUrl) {
+        html += `<a href="${data.fileUrl}" target="_blank">📎 ${data.fileName}</a>`;
+      } else {
+        html += data.message;
+      }
+      html += `</div>`;
+      div.innerHTML = html;
+
+      document.getElementById('messages').appendChild(div);
+      div.scrollIntoView({ behavior: "smooth" });
+    }
+
+    // ==================== Socket Events ====================
+
+    socket.on('joinSuccess', (data) => {     // New event from server
+      currentRoom = data.room;
+      document.getElementById('messages').innerHTML = '';
+      activeRooms.add(data.room);
+      renderRoomList();
+    });
+
+    socket.on('message', (data) => {
+      renderMessage(data);
+
+      if (data.room !== currentRoom || !isTabActive) {
+        unread[data.room] = (unread[data.room] || 0) + 1;
+        renderRoomList();
+        playNotification();
+      }
+    });
+
+    socket.on('previousMessages', (msgs) => {
+      document.getElementById('messages').innerHTML = '';
+      msgs.forEach(msg => {
+        if (msg.fileUrl) {
+          const ext = (msg.fileName || '').toLowerCase();
+          msg.isImage = ['.jpg','.jpeg','.png','.gif','.webp'].some(e => ext.endsWith(e));
+        }
+        renderMessage(msg);
+      });
+    });
+
+    socket.on('typing', (data) => {
+      document.getElementById('typing').textContent = data.isTyping ? `${data.username} is typing...` : '';
+    });
+
+    // Initial Setup
+    window.onload = () => {
+      unread['general'] = 0;
+      activeRooms.add('general');
+      renderRoomList();
+    };
+  </script>
+</body>
+</html>

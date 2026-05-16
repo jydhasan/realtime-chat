@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>NeoChat · Real-time Messenger</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: linear-gradient(145deg, #e0eafc 0%, #cfdef3 100%);
+      font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, 'Roboto', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    /* Modern glass-morphism card */
+    .chat-container {
+      max-width: 1300px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(2px);
+      border-radius: 2rem;
+      box-shadow: 0 25px 45px -12px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+
+    /* Header with glow */
+    .chat-header {
+      background: #1e2a3e;
+      background: linear-gradient(135deg, #1a2a3a, #0f1a24);
+      padding: 1.2rem 2rem;
+      color: white;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .brand h1 {
+      font-weight: 700;
+      font-size: 1.7rem;
+      letter-spacing: -0.3px;
+      background: linear-gradient(120deg, #fff, #b9e0ff);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+
+    .badge {
+      background: #2c4c6e;
+      padding: 4px 12px;
+      border-radius: 40px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: #cee9ff;
+    }
+
+    /* Join panel – sleek controls */
+    .join-panel {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(8px);
+      padding: 1.2rem 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 1rem;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+      min-width: 150px;
+    }
+
+    .input-group label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #2c3e4e;
+    }
+
+    .input-group input {
+      background: white;
+      border: 1px solid #cddfe7;
+      padding: 10px 14px;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      transition: 0.2s;
+      outline: none;
+      font-weight: 500;
+    }
+
+    .input-group input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+
+    .btn-primary {
+      background: #1e88e5;
+      border: none;
+      padding: 10px 28px;
+      border-radius: 40px;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      transition: 0.2s;
+      font-size: 0.9rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      margin-top: 18px;
+    }
+
+    .btn-primary:hover {
+      background: #0b5e8a;
+      transform: scale(0.97);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    }
+
+    /* active room indicator */
+    .room-status {
+      background: #eef2f7;
+      padding: 8px 2rem;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #dce5ec;
+      color: #1e4663;
+    }
+
+    .room-status .room-name {
+      font-weight: 700;
+      background: #d4e3fd;
+      padding: 4px 12px;
+      border-radius: 24px;
+      font-family: monospace;
+    }
+
+    .live-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: #34b53a;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #2ecc71;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.5; transform: scale(0.9);}
+      100% { opacity: 1; transform: scale(1.2);}
+    }
+
+    /* messages area — sleek scroll */
+    .messages-area {
+      height: 420px;
+      overflow-y: auto;
+      padding: 1.5rem 1.8rem;
+      background: #f9fbfd;
+      scroll-behavior: smooth;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* custom scrollbar */
+    .messages-area::-webkit-scrollbar {
+      width: 6px;
+    }
+    .messages-area::-webkit-scrollbar-track {
+      background: #e4e9f0;
+      border-radius: 10px;
+    }
+    .messages-area::-webkit-scrollbar-thumb {
+      background: #b9c4d1;
+      border-radius: 10px;
+    }
+
+    /* message bubbles */
+    .message {
+      display: flex;
+      flex-direction: column;
+      max-width: 75%;
+      animation: fadeSlideUp 0.2s ease;
+    }
+
+    @keyframes fadeSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .own-message {
+      align-self: flex-end;
+    }
+
+    .other-message {
+      align-self: flex-start;
+    }
+
+    .message-bubble {
+      border-radius: 24px;
+      padding: 10px 16px;
+      word-wrap: break-word;
+      background: white;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      position: relative;
+    }
+
+    .own-message .message-bubble {
+      background: #dcf8e7;
+      border-bottom-right-radius: 6px;
+      color: #1c2e3a;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+
+    .other-message .message-bubble {
+      background: #ffffff;
+      border-bottom-left-radius: 6px;
+      border: 1px solid #e2edf2;
+    }
+
+    .message-username {
+      font-weight: 700;
+      font-size: 0.75rem;
+      margin-bottom: 4px;
+      margin-left: 6px;
+      color: #2c6e9e;
+      display: inline-block;
+    }
+
+    .own-message .message-username {
+      color: #0f6b3a;
+    }
+
+    .message-text {
+      font-size: 0.95rem;
+      line-height: 1.4;
+    }
+
+    .message-time {
+      font-size: 0.65rem;
+      color: #7c8f9c;
+      margin-top: 4px;
+      margin-left: 8px;
+      text-align: right;
+    }
+
+    /* system events styling */
+    .system-event {
+      text-align: center;
+      font-size: 0.75rem;
+      background: #eef2fa;
+      align-self: center;
+      padding: 5px 14px;
+      border-radius: 30px;
+      color: #4a627a;
+      max-width: 80%;
+      margin: 4px 0;
+      font-style: italic;
+    }
+
+    /* typing indicator (bonus UI) */
+    .typing-indicator {
+      font-size: 0.7rem;
+      padding: 6px 1.8rem;
+      color: #4870a3;
+      background: #f0f4fa;
+      border-top: 1px solid #e2e9f0;
+      transition: 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dots {
+      display: flex;
+      gap: 4px;
+    }
+    .dots span {
+      width: 6px;
+      height: 6px;
+      background: #2f6b9f;
+      border-radius: 50%;
+      animation: wave 1.2s infinite;
+    }
+    .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes wave {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+      30% { transform: translateY(-4px); opacity: 1; }
+    }
+
+    /* footer input */
+    .message-footer {
+      padding: 1rem 1.8rem 1.6rem;
+      background: white;
+      border-top: 1px solid #e9edf2;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .message-footer input {
+      flex: 1;
+      padding: 12px 18px;
+      border-radius: 50px;
+      border: 1px solid #cbdde6;
+      font-size: 0.95rem;
+      outline: none;
+      transition: 0.2s;
+      background: #ffffff;
+    }
+
+    .message-footer input:focus {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    .send-btn {
+      background: #1e88e5;
+      border: none;
+      color: white;
+      padding: 0 28px;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .send-btn:hover {
+      background: #0f6aba;
+      transform: scale(0.96);
+    }
+
+    button:active {
+      transform: scale(0.95);
+    }
+
+    @media (max-width: 680px) {
+      body {
+        padding: 12px;
+      }
+      .join-panel {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .btn-primary {
+        margin-top: 6px;
+      }
+      .message {
+        max-width: 90%;
+      }
+      .chat-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    .disabled-input {
+      background: #f1f5f9;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+
+    footer {
+      font-size: 0.7rem;
+      text-align: center;
+      background: #eef3fc;
+      padding: 6px;
+      color: #4a6f8f;
+    }
+  </style>
+</head>
+<body>
+<div class="chat-container">
+  <div class="chat-header">
+    <div class="brand">
+      <h1>✨ NeoChat</h1>
+      <div class="badge">real-time · socket.io</div>
+    </div>
+    <div class="live-dot"></div>
+  </div>
+
+  <!-- Join section -->
+  <div class="join-panel" id="joinPanel">
+    <div class="input-group">
+      <label>👤 YOUR NAME</label>
+      <input type="text" id="username" placeholder="e.g., Alex" value="User1">
+    </div>
+    <div class="input-group">
+      <label>🏠 ROOM (optional)</label>
+      <input type="text" id="room" placeholder="channel name" value="general">
+    </div>
+    <button class="btn-primary" id="joinBtn">🚀 Join Chat</button>
+  </div>
+
+  <!-- Room + status bar (hidden until join) -->
+  <div class="room-status" id="roomStatusBar" style="display: none;">
+    <span>💬 Active room:</span>
+    <span class="room-name" id="activeRoomLabel">general</span>
+    <span style="margin-left: auto; font-size: 0.7rem;">✨ connected</span>
+  </div>
+
+  <!-- Messages container -->
+  <div id="messages" class="messages-area">
+    <div class="system-event">💡 Welcome! Enter your name and room, then click Join.</div>
+  </div>
+
+  <!-- Typing indicator (global) -->
+  <div id="typingIndicator" class="typing-indicator" style="display: none;">
+    <div class="dots"><span></span><span></span><span></span></div>
+    <span id="typingText">Someone is typing...</span>
+  </div>
+
+  <!-- Input footer -->
+  <div class="message-footer" id="inputFooter" style="display: none;">
+    <input type="text" id="input" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+    <button class="send-btn" id="sendBtn">📤 Send</button>
+  </div>
+  <footer>⚡ realtime experience — messages sync across all room members</footer>
+</div>
+
+<script>
+  const socket = io();
+  
+  // DOM elements
+  const usernameInput = document.getElementById('username');
+  const roomInput = document.getElementById('room');
+  const joinBtn = document.getElementById('joinBtn');
+  const messagesDiv = document.getElementById('messages');
+  const messageInput = document.getElementById('input');
+  const sendBtn = document.getElementById('sendBtn');
+  const roomStatusBar = document.getElementById('roomStatusBar');
+  const activeRoomLabel = document.getElementById('activeRoomLabel');
+  const inputFooter = document.getElementById('inputFooter');
+  const joinPanel = document.getElementById('joinPanel');
+  const typingIndicatorDiv = document.getElementById('typingIndicator');
+  const typingTextSpan = document.getElementById('typingText');
+
+  let currentUser = '';
+  let currentRoom = '';
+  let isJoined = false;
+  let typingTimeout = null;
+
+  // Helper: add message to UI
+  function addMessageToUI(username, message, isOwn = false, timestamp = null) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isOwn ? 'own-message' : 'other-message'}`;
+    
+    const timeString = timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    messageDiv.innerHTML = `
+      <div class="message-bubble">
+        <div class="message-username">${escapeHtml(username)}</div>
+        <div class="message-text">${escapeHtml(message)}</div>
+        <div class="message-time">${timeString}</div>
+      </div>
+    `;
+    messagesDiv.appendChild(messageDiv);
+    messageDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function addSystemMessage(text) {
+    const sysDiv = document.createElement('div');
+    sysDiv.className = 'system-event';
+    sysDiv.innerHTML = `📢 ${escapeHtml(text)}`;
+    messagesDiv.appendChild(sysDiv);
+    sysDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Simple escape to prevent XSS
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+      if (m === '&') return '&amp;';
+      if (m === '<') return '&lt;';
+      if (m === '>') return '&gt;';
+      return m;
+    }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+      return c;
+    });
+  }
+
+  // Join room logic
+  function joinRoom() {
+    const newUsername = usernameInput.value.trim();
+    const newRoom = roomInput.value.trim() || 'general';
+    
+    if (!newUsername) {
+      addSystemMessage('⚠️ Please enter a username before joining.');
+      return;
+    }
+    
+    // If already joined a room, we first leave previous (optional but improves UX)
+    if (isJoined && currentRoom && socket) {
+      // Notify server we are leaving previous room gracefully
+      socket.emit('leaveRoom', { username: currentUser, room: currentRoom });
+    }
+    
+    currentUser = newUsername;
+    currentRoom = newRoom;
+    
+    socket.emit('join', { username: currentUser, room: currentRoom });
+    
+    // update UI: disable join controls, show room and message area
+    joinPanel.style.display = 'none';
+    roomStatusBar.style.display = 'flex';
+    inputFooter.style.display = 'flex';
+    activeRoomLabel.innerText = currentRoom;
+    isJoined = true;
+    
+    // Clear messages area for fresh chat (preserve clean look)
+    messagesDiv.innerHTML = '';
+    addSystemMessage(`🔗 You joined room "${currentRoom}" as ${currentUser}. Say hello!`);
+    
+    // focus input
+    messageInput.disabled = false;
+    messageInput.focus();
+  }
+
+  // send message
+  function sendMessage() {
+    if (!isJoined) {
+      addSystemMessage('❌ Please join a room first.');
+      return;
+    }
+    const text = messageInput.value.trim();
+    if (!text) return;
+    
+    // Emit message event
+    socket.emit('message', { message: text });
+    messageInput.value = '';
+    
+    // stop typing indication when send
+    clearTyping();
+  }
+
+  function handleKeyPress(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      sendMessage();
+    } else {
+      // typing event: emit only if not already typing triggered recently
+      if (isJoined && currentRoom) {
+        if (typingTimeout) clearTimeout(typingTimeout);
+        socket.emit('typing', { username: currentUser, room: currentRoom, isTyping: true });
+        typingTimeout = setTimeout(() => {
+          socket.emit('typing', { username: currentUser, room: currentRoom, isTyping: false });
+        }, 1500);
+      }
+    }
+  }
+
+  function clearTyping() {
+    if (typingTimeout) {
+      clearTimeout(typingTimeout);
+      socket.emit('typing', { username: currentUser, room: currentRoom, isTyping: false });
+    }
+  }
+
+  // ---- Socket event handlers ----
+  socket.on('message', (data) => {
+    // data = { username, message, timestamp? }
+    if (!data.username || !data.message) return;
+    const isOwn = (data.username === currentUser);
+    addMessageToUI(data.username, data.message, isOwn, data.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' }));
+  });
+
+  socket.on('userJoined', (data) => {
+    if (data.username && data.username !== currentUser) {
+      addSystemMessage(`✨ ${data.username} joined the room.`);
+    } else if (data.username === currentUser) {
+      // already displayed join message, skip duplicate
+    } else {
+      addSystemMessage(data.message || 'A new user joined.');
+    }
+  });
+
+  socket.on('userLeft', (data) => {
+    if (data.username && data.username !== currentUser) {
+      addSystemMessage(`👋 ${data.username} left the room.`);
+    } else {
+      addSystemMessage(data.message || 'User disconnected.');
+    }
+  });
+
+  // incoming typing indicator from other users
+  let typingTimeoutGlobal = null;
+  socket.on('typing', (data) => {
+    if (!isJoined) return;
+    if (data.username && data.username !== currentUser && data.room === currentRoom) {
+      if (data.isTyping) {
+        typingTextSpan.innerText = `${data.username} is typing...`;
+        typingIndicatorDiv.style.display = 'flex';
+        if (typingTimeoutGlobal) clearTimeout(typingTimeoutGlobal);
+        typingTimeoutGlobal = setTimeout(() => {
+          typingIndicatorDiv.style.display = 'none';
+        }, 2000);
+      } else {
+        typingIndicatorDiv.style.display = 'none';
+        if (typingTimeoutGlobal) clearTimeout(typingTimeoutGlobal);
+      }
+    } else if (data.username === currentUser) {
+      // ignore own typing signals
+    }
+  });
+
+  // Server reconnect / initial connection acknowledgment
+  socket.on('connect', () => {
+    if (isJoined && currentUser && currentRoom) {
+      // rejoin after reconnect
+      socket.emit('join', { username: currentUser, room: currentRoom });
+      addSystemMessage('🔄 Reconnected to chat server.');
+    }
+  });
+
+  socket.on('disconnect', () => {
+    if (isJoined) addSystemMessage('⚠️ Connection lost. Trying to reconnect...');
+  });
+
+  // If server sends initial history or error
+  socket.on('errorMessage', (err) => {
+    addSystemMessage(`⚠️ ${err.message || 'Error occured'}`);
+  });
+
+  // Join button click
+  joinBtn.addEventListener('click', joinRoom);
+  sendBtn.addEventListener('click', sendMessage);
+  
+  // optional: if user presses join with existing session after disconnect
+  window.addEventListener('load', () => {
+    // Prefill placeholders
+    if (usernameInput.value.trim()) usernameInput.select();
+  });
+  
+  // Block sending if not joined
+  function blockIfNotJoined() {
+    if (!isJoined && messageInput.value) {
+      addSystemMessage('📢 Please click "Join Chat" to start messaging.');
+      messageInput.value = '';
+    }
+  }
+  messageInput.addEventListener('focus', blockIfNotJoined);
+  
+  // Additional polish: send typing clear on input blur
+  messageInput.addEventListener('blur', () => {
+    if (isJoined) {
+      clearTyping();
+      socket.emit('typing', { username: currentUser, room: currentRoom, isTyping: false });
+    }
+  });
+  
+  // For disconnection / page unload - tell server we leave room gracefully (optional)
+  window.addEventListener('beforeunload', () => {
+    if (isJoined && socket && currentRoom) {
+      socket.emit('leaveRoom', { username: currentUser, room: currentRoom });
+    }
+  });
+  
+  // Css improvements: ensure existing socket listeners also handle old-style console logs,
+  // but we already show UI.
+  console.log('✨ NeoChat enhanced UI — ready for real-time messaging');
+</script>
+</body>
+</html>

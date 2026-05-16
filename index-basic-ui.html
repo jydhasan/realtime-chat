@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-time Chat</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: Arial; margin: 0; padding: 20px; }
+    #messages { height: 400px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; }
+    .message { margin: 8px 0; }
+    .own { text-align: right; color: blue; }
+  </style>
+</head>
+<body>
+  <h1>Real-time Chat</h1>
+  
+  <input id="username" placeholder="Your name" value="User1">
+  <input id="room" placeholder="Room name (optional)" value="general">
+  <button onclick="joinRoom()">Join</button>
+
+  <div id="messages"></div>
+
+  <input id="input" placeholder="Type message..." onkeypress="if(event.key === 'Enter') sendMessage()">
+  <button onclick="sendMessage()">Send</button>
+
+  <script>
+    const socket = io();
+    let currentUser = '';
+    let currentRoom = '';
+
+    function joinRoom() {
+      currentUser = document.getElementById('username').value;
+      currentRoom = document.getElementById('room').value || 'general';
+      
+      socket.emit('join', { username: currentUser, room: currentRoom });
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('input');
+      if (input.value.trim()) {
+        socket.emit('message', { message: input.value });
+        input.value = '';
+      }
+    }
+
+    socket.on('message', (data) => {
+      const messages = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.className = 'message';
+      div.innerHTML = `<strong>${data.username}:</strong> ${data.message}`;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    });
+
+    socket.on('userJoined', (data) => {
+      console.log(data.message);
+    });
+
+    socket.on('userLeft', (data) => {
+      console.log(data.message);
+    });
+  </script>
+</body>
+</html>

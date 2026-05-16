@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-time Chat</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 10px; }
+    #messages { height: 70vh; overflow-y: scroll; border: 1px solid #ddd; padding: 10px; }
+    .message { margin: 10px 0; padding: 8px; border-radius: 8px; background: #f1f1f1; }
+    .own { background: #dcf8c6; text-align: right; }
+    .file { color: blue; text-decoration: underline; cursor: pointer; }
+    #typing { font-style: italic; color: gray; }
+  </style>
+</head>
+<body>
+  <h1>Real-time Chat with File Sharing</h1>
+
+  <input id="username" placeholder="Your Name" value="Zahid">
+  <input id="room" placeholder="Room" value="general">
+  <button onclick="joinRoom()">Join Room</button>
+
+  <div id="messages"></div>
+  <div id="typing"></div>
+
+  <input id="input" placeholder="Type message..." onkeypress="if(event.key==='Enter') sendMessage()">
+  <button onclick="sendMessage()">Send</button>
+  <input type="file" id="fileInput" style="display:none" onchange="uploadFile()">
+  <button onclick="document.getElementById('fileInput').click()">📎 Attach File</button>
+
+  <script>
+    const socket = io();
+    let username = '', room = '';
+
+    function joinRoom() {
+      username = document.getElementById('username').value;
+      room = document.getElementById('room').value || 'general';
+
+      socket.emit('join', { username, room });
+    }
+
+    function sendMessage() {
+      const msg = document.getElementById('input').value.trim();
+      if (msg) {
+        socket.emit('message', { message: msg });
+        document.getElementById('input').value = '';
+      }
+    }
+
+    // File Upload
+    function uploadFile() {
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) return;
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      fetch('/upload', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        socket.emit('message', {
+          message: `Shared a file: ${data.fileName}`,
+          fileUrl: data.fileUrl,
+          fileName: data.fileName
+        });
+      });
+    }
+
+    // Receive messages
+    socket.on('message', (data) => {
+      const div = document.createElement('div');
+      div.className = 'message';
+      if (data.username === username) div.classList.add('own');
+
+      if (data.fileUrl) {
+        div.innerHTML = `<strong>${data.username}:</strong><br>
+                         <a href="${data.fileUrl}" target="_blank" class="file">
+                           📎 ${data.fileName}
+                         </a>`;
+      } else {
+        div.innerHTML = `<strong>${data.username}:</strong> ${data.message}`;
+      }
+
+      document.getElementById('messages').appendChild(div);
+      div.scrollIntoView();
+    });
+
+    socket.on('previousMessages', (msgs) => {
+      msgs.forEach(data => {
+        // Reuse same message rendering logic
+        const div = document.createElement('div');
+        // ... (same as above)
+        document.getElementById('messages').appendChild(div);
+      });
+    });
+
+    // Typing Indicator
+    let typingTimeout;
+    document.getElementById('input').addEventListener('input', () => {
+      socket.emit('typing', { isTyping: true });
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        socket.emit('typing', { isTyping: false });
+      }, 1000);
+    });
+
+    socket.on('typing', (data) => {
+      document.getElementById('typing').textContent = data.isTyping 
+        ? `${data.username} is typing...` 
+        : '';
+    });
+
+    socket.on('userJoined', (data) => console.log(data.message));
+    socket.on('userLeft', (data) => console.log(data.message));
+  </script>
+</body>
+</html>
